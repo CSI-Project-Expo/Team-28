@@ -41,7 +41,9 @@ Existing flows diverge based on the initial AI Triage decision:
     - Human review is required to merge or reject the changes.
 
 ## Tech Stack (Planned)
-- **Frontend**: Next.js (React)
+- **Frontend**: react+vite
 - **Sandbox Environment**: e2b.dev
 - **AI Engine**: Claude / OpenAI
 - **Coding Agent**: Claude Code
+- **Backend**: nodejs+express
+
