@@ -1,119 +1,18 @@
 const express = require('express');
 const router = express.Router();
-const { triageIssue } = require('../services/triage');
-const { runSandboxFix } = require('../services/sandbox');
-const { createPullRequest, mergePullRequest } = require('../services/github');
-const { sendManualReviewEmail } = require('../services/notification');
+const { handleReport } = require('../controllers/reportController');
 
 /**
  * POST /api/report
  *
- * Accepts an issue report and kicks off the full self-healing pipeline:
- *   1. AI triage → AUTOMATED | MANUAL
- *   2. Sandbox fix generation (e2b + Claude Code)
- *   3. PR creation
- *   4. Auto-merge (AUTOMATED) or email notification (MANUAL)
+ * Accepts an issue report and delegates to the report controller.
+ *
+ * Body:
+ *   - issueTitle        (string, required)
+ *   - issueDescription  (string, required)
+ *   - stepsToReproduce  (string, optional)
+ *   - severity          (string, required) — e.g. "low", "medium", "high", "critical"
  */
-router.post('/report', async (req, res) => {
-    try {
-        const { title, description, stepsToReproduce, expectedBehavior, actualBehavior } = req.body;
-
-        // ── Validate ──────────────────────────────────────────
-        if (!title || !description) {
-            return res.status(400).json({
-                success: false,
-                message: 'Both "title" and "description" are required.',
-            });
-        }
-
-        const issuePayload = {
-            title,
-            description,
-            stepsToReproduce: stepsToReproduce || '',
-            expectedBehavior: expectedBehavior || '',
-            actualBehavior: actualBehavior || '',
-        };
-
-        console.log(`\n📥  New issue reported: "${title}"`);
-
-        // ── Step 1: AI Triage ─────────────────────────────────
-        console.log('🤖  Running AI triage…');
-        const triageResult = await triageIssue(issuePayload);
-        console.log(`    Decision: ${triageResult.decision}  (confidence: ${triageResult.confidence})`);
-        console.log(`    Reasoning: ${triageResult.reasoning}`);
-
-        // ── Step 2: Sandbox Fix Generation ────────────────────
-        console.log('📦  Spinning up sandbox environment…');
-        const sandboxResult = await runSandboxFix(issuePayload, triageResult);
-        console.log(`    Branch: ${sandboxResult.branch}`);
-
-        // ── Step 3: Create Pull Request ───────────────────────
-        console.log('🔀  Creating Pull Request…');
-        const pr = await createPullRequest({
-            title: `[Self-Heal] Fix: ${title}`,
-            body: buildPRBody(issuePayload, triageResult, sandboxResult),
-            branch: sandboxResult.branch,
-        });
-        console.log(`    PR #${pr.number}: ${pr.html_url}`);
-
-        // ── Step 4: Resolution ────────────────────────────────
-        let resolution;
-        if (triageResult.decision === 'AUTOMATED') {
-            console.log('✅  Auto-merging PR…');
-            await mergePullRequest(pr.number);
-            resolution = 'merged';
-        } else {
-            console.log('📧  Sending manual-review notification…');
-            await sendManualReviewEmail({
-                issueTitle: title,
-                prUrl: pr.html_url,
-                prNumber: pr.number,
-                reasoning: triageResult.reasoning,
-            });
-            resolution = 'pending_review';
-        }
-
-        return res.status(201).json({
-            success: true,
-            data: {
-                triageDecision: triageResult.decision,
-                confidence: triageResult.confidence,
-                prNumber: pr.number,
-                prUrl: pr.html_url,
-                resolution,
-            },
-        });
-    } catch (error) {
-        console.error('❌  Pipeline error:', error);
-        return res.status(500).json({
-            success: false,
-            message: 'Failed to process the issue report.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-        });
-    }
-});
-
-// ── Helpers ────────────────────────────────────────────────
-function buildPRBody(issue, triage, sandbox) {
-    return [
-        `## 🛠️ Self-Healing Fix`,
-        '',
-        `**Issue:** ${issue.title}`,
-        `**Description:** ${issue.description}`,
-        '',
-        `### Triage`,
-        `| Field | Value |`,
-        `|-------|-------|`,
-        `| Decision | \`${triage.decision}\` |`,
-        `| Confidence | ${triage.confidence} |`,
-        `| Reasoning | ${triage.reasoning} |`,
-        '',
-        `### Changes`,
-        sandbox.summary || '_No summary available._',
-        '',
-        `---`,
-        `_Generated by AI Self-Healing System_`,
-    ].join('\n');
-}
+router.post('/report', handleReport);
 
 module.exports = router;

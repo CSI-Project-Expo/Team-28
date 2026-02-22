@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const reportRoutes = require('./routes/report');
 const healthRoutes = require('./routes/health');
+const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,14 +23,7 @@ app.use('/api', reportRoutes);
 app.use('/api', healthRoutes);
 
 // ── Global Error Handler ───────────────────────────────────
-app.use((err, _req, res, _next) => {
-    console.error('Unhandled error:', err);
-    res.status(500).json({
-        success: false,
-        message: 'Internal server error',
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined,
-    });
-});
+app.use(errorHandler);
 
 // ── Start Server ───────────────────────────────────────────
 app.listen(PORT, () => {

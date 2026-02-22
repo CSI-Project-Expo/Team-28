@@ -4,26 +4,35 @@ const nodemailer = require('nodemailer');
  * Create a reusable SMTP transporter from environment variables.
  */
 function createTransporter() {
-    return nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT) || 587,
-        secure: false,
-        auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS,
-        },
-    });
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT) || 587,
+    secure: false,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  });
 }
 
 /**
- * Send an email to the admin requesting manual review of a PR.
+ * Send an email notification to the admin for a MANUAL issue.
  *
- * @param {Object} options – { issueTitle, prUrl, prNumber, reasoning }
+ * @param {Object} options - { issueTitle, prUrl, prNumber, reasoning }
  */
-async function sendManualReviewEmail({ issueTitle, prUrl, prNumber, reasoning }) {
-    const transporter = createTransporter();
+async function sendNotification({ issueTitle, prUrl, prNumber, reasoning }) {
+  // Skip real email if SMTP is not configured
+  const smtpUser = process.env.SMTP_USER || '';
+  if (!smtpUser || smtpUser.includes('your_') || smtpUser === 'your_email@gmail.com') {
+    console.log(`📧  [Email] SMTP not configured — skipping email send.`);
+    console.log(`    Would have notified: ${process.env.NOTIFICATION_EMAIL || 'admin'}`);
+    console.log(`    Issue: "${issueTitle}" | PR #${prNumber} → ${prUrl}`);
+    return;
+  }
 
-    const html = `
+  const transporter = createTransporter();
+
+  const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <h2 style="color: #d97706;">🔍 Manual Review Required</h2>
       <p>The AI Self-Healing System has created a fix that requires your review.</p>
@@ -53,14 +62,14 @@ async function sendManualReviewEmail({ issueTitle, prUrl, prNumber, reasoning })
     </div>
   `;
 
-    await transporter.sendMail({
-        from: `"Self-Heal Bot" <${process.env.SMTP_USER}>`,
-        to: process.env.NOTIFICATION_EMAIL,
-        subject: `[Manual Review] Self-Healing Fix: ${issueTitle}`,
-        html,
-    });
+  await transporter.sendMail({
+    from: `"Self-Heal Bot" <${process.env.SMTP_USER}>`,
+    to: process.env.NOTIFICATION_EMAIL,
+    subject: `[Manual Review] Self-Healing Fix: ${issueTitle}`,
+    html,
+  });
 
-    console.log(`    📧 Email sent to ${process.env.NOTIFICATION_EMAIL}`);
+  console.log(`📧  [Email] Notification sent to ${process.env.NOTIFICATION_EMAIL}`);
 }
 
-module.exports = { sendManualReviewEmail };
+module.exports = { sendNotification };
