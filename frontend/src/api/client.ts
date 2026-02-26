@@ -1,7 +1,7 @@
 /**
  * api/client.ts
  *
- * Centralised Axios instance. The Vite dev server proxies /api → http://localhost:4000.
+ * Centralised Axios instance. The Vite dev server proxies /api → http://localhost:3000.
  */
 import axios from 'axios';
 
