@@ -1,34 +1,32 @@
 /**
  * sandbox/sandboxManager.ts
  *
- * LOCAL sandbox using Node.js child_process + fs.
- * Replaces the previous E2B cloud sandbox — no paid API needed.
+ * Cloud sandbox powered by E2B (https://e2b.dev).
+ * Each issue gets an isolated Linux container — git, node, npm pre-installed.
  *
  * Flow:
- *   createSandbox()        → creates /tmp/site-surgeon-{timestamp}/
+ *   createSandbox()        → spin up E2B container
  *   cloneRepo()            → git clone --depth 1 <repoUrl>
- *   installDependencies()  → detects npm / yarn / pnpm / pip and installs
- *   readFile / writeFile   → fs.readFileSync / writeFileSync
- *   listRepoFiles()        → recursive walk (excludes .git, node_modules…)
+ *   installDependencies()  → npm / yarn / pnpm / pip install
+ *   readFile / writeFile   → sbx.files.read / write
+ *   listRepoFiles()        → `find` inside the container
  *   runTestsOrBuild()      → npm test or npm run build
- *   destroySandbox()       → fs.rmSync(workDir, { recursive: true })
+ *   destroySandbox()       → sbx.kill()
  */
-import { execSync } from 'child_process';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import { Sandbox } from 'e2b';
 import { logger } from '../utils/logger';
 
-// ─── Context ──────────────────────────────────────────────────────────────────
+// ─── Context ─────────────────────────────────────────────────────────────────
 
 export interface SandboxContext {
   sandboxId: string;
-  workDir: string;   // /tmp/site-surgeon-{timestamp}
-  repoDir: string;   // workDir / repoName
+  sandbox: Sandbox;
+  workDir: string;  // absolute path inside container, e.g. /home/user
+  repoDir: string;  // workDir/repoName
   logs: string[];
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function repoName(repoUrl: string): string {
   const parts = repoUrl.replace(/\.git$/, '').split('/');
@@ -39,63 +37,71 @@ function toCloneUrl(repoUrl: string): string {
   return repoUrl.replace(/\/$/, '').replace(/\.git$/, '') + '.git';
 }
 
-/** Execute a shell command synchronously; throw on non-zero exit. */
-function run(cmd: string, cwd?: string, logs?: string[]): string {
-  try {
-    const out = execSync(cmd, {
-      encoding: 'utf8',
-      timeout: 180_000,
-      cwd: cwd ?? process.cwd(),
-      shell: process.platform === 'win32' ? 'cmd.exe' : '/bin/sh',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }) as string;
-    if (logs) logs.push(`[run] ${cmd.slice(0, 80)}: OK`);
-    return out;
-  } catch (err: unknown) {
-    const e = err as { message?: string; stdout?: string; stderr?: string };
-    const msg = [e.message, e.stderr, e.stdout].filter(Boolean).join('\n').slice(0, 500);
-    if (logs) logs.push(`[run] ${cmd.slice(0, 80)}: ERROR – ${msg}`);
-    throw new Error(`Command failed: ${cmd.slice(0, 80)}\n${msg}`);
+/** Run a shell command inside the E2B container; throw on non-zero exit. */
+async function run(
+  sbx: Sandbox,
+  cmd: string,
+  cwd?: string,
+  logs?: string[],
+  timeoutMs = 180_000,
+): Promise<string> {
+  const fullCmd = cwd ? `cd "${cwd}" && ${cmd}` : cmd;
+  const result = await sbx.commands.run(fullCmd, { timeoutMs });
+
+  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`.trim();
+
+  if (result.exitCode !== 0) {
+    if (logs) logs.push(`[run] ${cmd.slice(0, 80)}: EXIT ${result.exitCode}`);
+    throw new Error(`Command failed (exit ${result.exitCode}): ${cmd.slice(0, 80)}\n${output.slice(0, 500)}`);
   }
+
+  if (logs) logs.push(`[run] ${cmd.slice(0, 80)}: OK`);
+  return result.stdout ?? '';
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export async function createSandbox(repoUrl: string): Promise<SandboxContext> {
-  const ts = Date.now();
-  // os.tmpdir() works on Linux (/tmp), macOS (/tmp), and Windows (C:\Users\…\AppData\Local\Temp)
-  const workDir = path.join(os.tmpdir(), `site-surgeon-${ts}`);
-  fs.mkdirSync(workDir, { recursive: true });
+  const apiKey = process.env.E2B_API_KEY;
+  if (!apiKey) throw new Error('E2B_API_KEY is not set in environment');
 
-  const sandboxId = `local-${ts}`;
-  const repoDir = path.join(workDir, repoName(repoUrl));
+  logger.info('Creating E2B sandbox...');
+  const sandbox = await Sandbox.create({ apiKey, timeoutMs: 600_000 });
+
+  const sandboxId = sandbox.sandboxId;
+  const workDir = '/home/user';
+  const repoDir = `${workDir}/${repoName(repoUrl)}`;
   const logs: string[] = [];
 
-  logger.info('Local sandbox created', { sandboxId, workDir });
-  logs.push(`Sandbox created: ${sandboxId} -> ${workDir}`);
+  logger.info('E2B sandbox created', { sandboxId });
+  logs.push(`E2B sandbox created: ${sandboxId}`);
 
-  return { sandboxId, workDir, repoDir, logs };
+  return { sandboxId, sandbox, workDir, repoDir, logs };
 }
 
 export async function cloneRepo(ctx: SandboxContext, repoUrl: string): Promise<void> {
   const cloneUrl = toCloneUrl(repoUrl);
   logger.info('Cloning repository', { cloneUrl });
   ctx.logs.push(`Cloning ${cloneUrl}...`);
-  run(`git clone --depth 1 "${cloneUrl}" "${ctx.repoDir}"`, undefined, ctx.logs);
+  await run(ctx.sandbox, `git clone --depth 1 "${cloneUrl}" "${ctx.repoDir}"`, undefined, ctx.logs);
   logger.info('Repository cloned', { repoDir: ctx.repoDir });
 }
 
 export async function installDependencies(ctx: SandboxContext): Promise<void> {
   logger.info('Installing dependencies', { repoDir: ctx.repoDir });
 
-  const has = (f: string) => fs.existsSync(path.join(ctx.repoDir, f));
+  // Detect package manager by checking for lockfiles
+  const checkResult = await ctx.sandbox.commands.run(
+    `ls "${ctx.repoDir}" 2>/dev/null`,
+  );
+  const files = checkResult.stdout ?? '';
 
   let cmd: string | null = null;
-  if      (has('package-lock.json')) cmd = 'npm install --legacy-peer-deps';
-  else if (has('yarn.lock'))          cmd = 'yarn install --non-interactive';
-  else if (has('pnpm-lock.yaml'))     cmd = 'pnpm install --frozen-lockfile';
-  else if (has('requirements.txt'))   cmd = 'pip install -r requirements.txt';
-  else if (has('pyproject.toml'))     cmd = 'pip install .';
+  if      (files.includes('package-lock.json')) cmd = 'npm install --legacy-peer-deps';
+  else if (files.includes('yarn.lock'))          cmd = 'yarn install --non-interactive';
+  else if (files.includes('pnpm-lock.yaml'))     cmd = 'pnpm install --frozen-lockfile';
+  else if (files.includes('requirements.txt'))   cmd = 'pip install -r requirements.txt';
+  else if (files.includes('pyproject.toml'))     cmd = 'pip install .';
 
   if (!cmd) {
     ctx.logs.push('[install] No package manager detected – skipping.');
@@ -104,47 +110,36 @@ export async function installDependencies(ctx: SandboxContext): Promise<void> {
 
   ctx.logs.push(`[install] Running: ${cmd}`);
   try {
-    const out = execSync(cmd, {
-      cwd: ctx.repoDir,
-      encoding: 'utf8',
-      timeout: 300_000,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }) as string;
-    ctx.logs.push(`[install] Done. ${out.slice(-800)}`);
+    await run(ctx.sandbox, cmd, ctx.repoDir, ctx.logs, 300_000);
+    ctx.logs.push('[install] Done.');
   } catch (err: unknown) {
-    const e = err as { message?: string; stderr?: string };
-    const msg = (e.stderr ?? e.message ?? '').slice(0, 500);
+    const msg = err instanceof Error ? err.message : String(err);
     logger.warn('Dependency install had errors (continuing)', { msg });
-    ctx.logs.push(`[install] Warning: ${msg}`);
+    ctx.logs.push(`[install] Warning: ${msg.slice(0, 300)}`);
   }
 }
 
 export async function readFile(_ctx: SandboxContext, absolutePath: string): Promise<string> {
-  return fs.readFileSync(absolutePath, 'utf8');
+  const result = await _ctx.sandbox.files.read(absolutePath);
+  return result as string;
 }
 
 export async function listRepoFiles(ctx: SandboxContext): Promise<string[]> {
-  const IGNORE = new Set([
-    '.git', 'node_modules', 'dist', 'build', '.next', '__pycache__',
-    'venv', '.env', 'coverage', '.turbo', '.cache',
-  ]);
+  const IGNORE = [
+    '.git', 'node_modules', 'dist', 'build', '.next',
+    '__pycache__', 'venv', 'coverage', '.turbo', '.cache',
+  ];
 
-  const results: string[] = [];
+  const excludes = IGNORE.map((d) => `-not -path "*/${d}/*" -not -name "${d}"`).join(' ');
+  const cmd = `find "${ctx.repoDir}" -type f ${excludes} 2>/dev/null | head -200`;
 
-  function walk(dir: string) {
-    let entries: fs.Dirent[];
-    try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
-    catch { return; }
-    for (const entry of entries) {
-      if (IGNORE.has(entry.name)) continue;
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else results.push(path.relative(ctx.repoDir, full));
-    }
-  }
+  const result = await ctx.sandbox.commands.run(cmd);
+  const lines = (result.stdout ?? '').split('\n').filter(Boolean);
 
-  walk(ctx.repoDir);
-  return results;
+  // Strip the repoDir prefix to get relative paths
+  return lines.map((l) =>
+    l.startsWith(ctx.repoDir + '/') ? l.slice(ctx.repoDir.length + 1) : l,
+  );
 }
 
 export async function writeFile(
@@ -152,9 +147,11 @@ export async function writeFile(
   relativePath: string,
   content: string,
 ): Promise<void> {
-  const fullPath = path.join(ctx.repoDir, relativePath);
-  fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-  fs.writeFileSync(fullPath, content, 'utf8');
+  const fullPath = `${ctx.repoDir}/${relativePath}`;
+  // Ensure parent dir exists
+  const dir = fullPath.substring(0, fullPath.lastIndexOf('/'));
+  await ctx.sandbox.commands.run(`mkdir -p "${dir}"`);
+  await ctx.sandbox.files.write(fullPath, content);
   ctx.logs.push(`[write] ${relativePath}`);
 }
 
@@ -163,28 +160,32 @@ export async function runTestsOrBuild(
 ): Promise<{ success: boolean; output: string }> {
   logger.info('Running tests / build', { repoDir: ctx.repoDir });
 
-  const pkgPath = path.join(ctx.repoDir, 'package.json');
+  // Check if package.json exists
+  const checkPkg = await ctx.sandbox.commands.run(`test -f "${ctx.repoDir}/package.json" && echo yes || echo no`);
+  const hasPkg = (checkPkg.stdout ?? '').trim() === 'yes';
 
-  if (!fs.existsSync(pkgPath)) {
-    // Try pytest for Python projects
+  if (!hasPkg) {
+    // Try pytest for Python
     try {
-      const out = execSync('python -m pytest --tb=short -q', {
-        cwd: ctx.repoDir, encoding: 'utf8', timeout: 120_000,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      }) as string;
+      const result = await ctx.sandbox.commands.run(
+        `cd "${ctx.repoDir}" && python -m pytest --tb=short -q`,
+        { timeoutMs: 120_000 },
+      );
+      const out = result.stdout ?? '';
       ctx.logs.push(`[test] ${out.slice(-2000)}`);
-      return { success: true, output: out };
+      return { success: result.exitCode === 0, output: out };
     } catch (err: unknown) {
-      const e = err as { message?: string; stderr?: string; stdout?: string };
-      const out = (e.stdout ?? e.stderr ?? e.message ?? '').slice(0, 1000);
-      return { success: false, output: out };
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, output: msg };
     }
   }
 
-  let pkgJson: { scripts?: Record<string, string> } = {};
-  try { pkgJson = JSON.parse(fs.readFileSync(pkgPath, 'utf8')); } catch { /* ignore */ }
+  const pkgResult = await ctx.sandbox.commands.run(`cat "${ctx.repoDir}/package.json"`);
+  let scripts: Record<string, string> = {};
+  try {
+    scripts = JSON.parse(pkgResult.stdout ?? '{}').scripts ?? {};
+  } catch { /* ignore */ }
 
-  const scripts = pkgJson.scripts ?? {};
   let cmd: string | null = null;
   if      (scripts['test'])  cmd = 'npm test -- --passWithNoTests';
   else if (scripts['build']) cmd = 'npm run build';
@@ -195,26 +196,28 @@ export async function runTestsOrBuild(
   }
 
   try {
-    const out = execSync(cmd, {
-      cwd: ctx.repoDir, encoding: 'utf8', timeout: 120_000,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }) as string;
+    const result = await ctx.sandbox.commands.run(
+      `cd "${ctx.repoDir}" && ${cmd}`,
+      { timeoutMs: 120_000 },
+    );
+    const out = `${result.stdout ?? ''}${result.stderr ?? ''}`;
     ctx.logs.push(`[test/build] ${out.slice(-2000)}`);
-    return { success: true, output: out };
+    return { success: result.exitCode === 0, output: out };
   } catch (err: unknown) {
-    const e = err as { message?: string; stderr?: string; stdout?: string };
-    const msg = (e.stdout ?? e.stderr ?? e.message ?? '').slice(0, 1000);
-    ctx.logs.push(`[test/build] Error: ${msg}`);
-    // Non-zero exit from tests is not fatal — still return for reporting
+    const msg = err instanceof Error ? err.message : String(err);
     return { success: false, output: msg };
   }
 }
 
 export async function destroySandbox(ctx: SandboxContext): Promise<void> {
   try {
-    fs.rmSync(ctx.workDir, { recursive: true, force: true });
-    logger.info('Local sandbox cleaned up', { workDir: ctx.workDir });
-  } catch {
-    logger.warn('Failed to clean up sandbox folder', { workDir: ctx.workDir });
+    await ctx.sandbox.kill();
+    logger.info('E2B sandbox destroyed', { sandboxId: ctx.sandboxId });
+    ctx.logs.push(`[sandbox] Destroyed: ${ctx.sandboxId}`);
+  } catch (err: unknown) {
+    logger.warn('Failed to destroy E2B sandbox', {
+      sandboxId: ctx.sandboxId,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }

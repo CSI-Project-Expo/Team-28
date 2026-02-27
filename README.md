@@ -44,7 +44,7 @@ Express Backend (TypeScript)
 | Frontend     | React 18, Vite 5, Tailwind CSS, Axios               |
 | Backend      | Node.js 18+, Express, TypeScript                    |
 | AI           | Groq API – `llama-3.3-70b-versatile` (free tier)   |
-| Sandbox      | Local `child_process` + `fs` (no cloud required)    |
+| Sandbox      | E2B cloud sandbox (`e2b` npm package)               |
 | Version Ctrl | GitHub REST API via Octokit                         |
 | Email        | Nodemailer (SMTP / Gmail App Password)              |
 | Logging      | Winston                                             |
@@ -118,6 +118,7 @@ site/
 | **npm ≥ 9** | Comes with Node.js |
 | **Git** | Must be on your PATH (used for repo cloning) |
 | **Groq API key** | Free at https://console.groq.com → API Keys |
+| **E2B API key** | Free tier at https://e2b.dev → Dashboard → API Keys |
 | **GitHub Token** | https://github.com/settings/tokens/new — scopes: `repo` |
 | **SMTP credentials** | Gmail App Password recommended |
 
@@ -221,6 +222,9 @@ LOG_LEVEL=info
 # Groq AI (free — https://console.groq.com)
 GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
+# E2B Cloud Sandbox (https://e2b.dev)
+E2B_API_KEY=e2b_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
 # GitHub
 GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 GITHUB_OWNER=your-github-username
@@ -243,6 +247,7 @@ DEMO_MODE=false
 | Variable | How to get it |
 |----------|--------------|
 | `GROQ_API_KEY` | https://console.groq.com → API Keys → Create Key (free) |
+| `E2B_API_KEY` | https://e2b.dev → Dashboard → API Keys (free tier) |
 | `GITHUB_TOKEN` | https://github.com/settings/tokens/new → select `repo` scope |
 | `GITHUB_OWNER` | Your GitHub username (e.g. `johndoe`) |
 | `GITHUB_REPO` | The repository name (e.g. `MyProject`) |
