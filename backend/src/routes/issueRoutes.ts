@@ -1,15 +1,10 @@
-/**
- * routes/issueRoutes.ts
- *
- * Defines and validates routes related to issue reporting.
- */
 import { Router } from 'express';
 import { body } from 'express-validator';
 import { reportIssue, getIssue } from '../controllers/issueController';
 
 export const issueRouter = Router();
 
-const GITHUB_URL_REGEX = /^https?:\/\/(www\.)?github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(\.git)?\/?$/;
+const GITHUB_URL_REGEX = /^https?:\/\/(www\.)?github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(\.git)?\/?$/
 
 const SEVERITY_VALUES = ['critical', 'high', 'medium', 'low'] as const;
 
