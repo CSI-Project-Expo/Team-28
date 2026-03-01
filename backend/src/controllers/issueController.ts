@@ -1,9 +1,3 @@
-/**
- * controllers/issueController.ts
- *
- * Handles HTTP request/response for issue operations.
- * Delegates business logic to issueProcessor.
- */
 import { Request, Response, NextFunction } from 'express';
 import { validationResult } from 'express-validator';
 import { processIssue } from '../services/issueProcessor';
@@ -34,7 +28,7 @@ export async function reportIssue(
     });
   } catch (err) {
     logger.error('reportIssue error', { error: err });
-    next(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 }
 
