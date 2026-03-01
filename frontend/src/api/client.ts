@@ -61,7 +61,7 @@ export interface ReportPayload {
   repoUrl: string;
 }
 
-// ── API calls ─────────────────────────────────────────────────────────────────
+// ── API calls ─────────────────────────────────────────────────────────────
 export async function reportIssue(payload: ReportPayload): Promise<{ issueId: string; status: string }> {
   try {
     const { data } = await api.post('/issues/report', payload);
@@ -98,6 +98,16 @@ export async function fetchStats(): Promise<DashboardStats> {
     return data;
   } catch (error) {
     console.error('Error fetching stats:', error);
+    throw error;
+  }
+}
+
+export async function login(username: string, password: string): Promise<{ token: string }> {
+  try {
+    const { data } = await api.post('/login', { username, password });
+    return data;
+  } catch (error) {
+    console.error('Error logging in:', error);
     throw error;
   }
 }

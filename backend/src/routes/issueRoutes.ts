@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createIssue, getIssue } from '../controllers/issueController';
+import { createIssue, getIssue, getAllIssues } from '../controllers/issueController';
 
 export const issueRouter = Router();
 
@@ -8,3 +8,6 @@ issueRouter.post('/report', createIssue);
 
 // GET /api/issues/:id
 issueRouter.get('/:id', getIssue);
+
+// GET /api/issues
+issueRouter.get('/', getAllIssues);
