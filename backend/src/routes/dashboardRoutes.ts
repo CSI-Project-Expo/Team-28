@@ -1,6 +1,3 @@
-/**
- * routes/dashboardRoutes.ts
- */
 import { Router } from 'express';
 import { listIssues, getStats } from '../controllers/dashboardController';
 
