@@ -12,8 +12,12 @@ export default function LoginPage() {
     try {
       const { token } = await login(username, password);
       // Handle successful login
-    } catch (error) {
-      setError(error);
+    } catch (error: any) {
+      if (error.response && error.response.status === 401) {
+        setError('Invalid username or password');
+      } else {
+        setError('An error occurred while logging in');
+      }
     }
   };
 
@@ -32,7 +36,7 @@ export default function LoginPage() {
         </label>
         <br />
         <button type="submit">Login</button>
-        {error && <p style={{ color: 'red' }}>{error.message}</p>}
+        {error && <p style={{ color: 'red' }}>{error}</p>}
       </form>
       <p>
         Don't have an account? <Link to="/register">Register</Link>
