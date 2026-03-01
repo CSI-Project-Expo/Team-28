@@ -1,8 +1,3 @@
-/**
- * api/client.ts
- *
- * Centralised Axios instance. The Vite dev server proxies /api → http://localhost:3000.
- */
 import axios from 'axios';
 
 export const api = axios.create({
@@ -12,7 +7,6 @@ export const api = axios.create({
 });
 
 // ── Types matching the backend ────────────────────────────────────────────────
-
 export type Severity = 'critical' | 'high' | 'medium' | 'low';
 export type AiDecision = 'AUTOMATED' | 'MANUAL';
 export type IssueStatus =
@@ -68,23 +62,42 @@ export interface ReportPayload {
 }
 
 // ── API calls ─────────────────────────────────────────────────────────────────
-
 export async function reportIssue(payload: ReportPayload): Promise<{ issueId: string; status: string }> {
-  const { data } = await api.post('/issues/report', payload);
-  return data;
+  try {
+    const { data } = await api.post('/issues/report', payload);
+    return data;
+  } catch (error) {
+    console.error('Error reporting issue:', error);
+    throw error;
+  }
 }
 
 export async function fetchIssue(id: string): Promise<Issue> {
-  const { data } = await api.get<Issue>(`/issues/${id}`);
-  return data;
+  try {
+    const { data } = await api.get<Issue>(`/issues/${id}`);
+    return data;
+  } catch (error) {
+    console.error('Error fetching issue:', error);
+    throw error;
+  }
 }
 
 export async function fetchAllIssues(): Promise<Issue[]> {
-  const { data } = await api.get<{ issues: Issue[] }>('/dashboard/issues');
-  return data.issues;
+  try {
+    const { data } = await api.get<{ issues: Issue[] }>('/dashboard/issues');
+    return data.issues;
+  } catch (error) {
+    console.error('Error fetching all issues:', error);
+    throw error;
+  }
 }
 
 export async function fetchStats(): Promise<DashboardStats> {
-  const { data } = await api.get<DashboardStats>('/dashboard/stats');
-  return data;
+  try {
+    const { data } = await api.get<DashboardStats>('/dashboard/stats');
+    return data;
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    throw error;
+  }
 }
