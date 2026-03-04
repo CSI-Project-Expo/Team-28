@@ -226,5 +226,5 @@ async function runPipeline(issue: Issue): Promise<void> {
     });
   }
 
-  logger.info('Pipeline complete ✓', { issueId: issue.id, status: prResult.merged ? 'merged' : 'pr_opened' });
+  logger.info('Pipeline complete ', { issueId: issue.id, status: prResult.merged ? 'merged' : 'pr_opened' });
 }
