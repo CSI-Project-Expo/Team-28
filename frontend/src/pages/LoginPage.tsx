@@ -13,7 +13,7 @@ export default function LoginPage() {
       const { token } = await login(username, password);
       // Handle successful login
     } catch (error: any) {
-      if (error.response && error.response.status === 401) {
+      if (error.status === 401) {
         setError('Invalid username or password');
       } else if (error.response) {
         setError(`Error ${error.response.status}: ${error.response.statusText}`);

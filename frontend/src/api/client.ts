@@ -107,6 +107,9 @@ export async function login(username: string, password: string): Promise<{ token
     const { data } = await api.post('/login', { username, password });
     return data;
   } catch (error) {
+    if (error.response && error.response.status === 401) {
+      throw { status: 401, message: 'Invalid username or password' };
+    }
     console.error('Error logging in:', error);
     throw error;
   }
