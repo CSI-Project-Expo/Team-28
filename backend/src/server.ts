@@ -7,6 +7,7 @@ import rateLimit from 'express-rate-limit';
 import { issueRouter } from './routes/issueRoutes';
 import { dashboardRouter } from './routes/dashboardRoutes';
 import { logger } from './utils/logger';
+import { authRouter } from './routes/authRoutes';
 
 // ── Startup env validation ────────────────────────────────────────────────────
 const REQUIRED = [
@@ -23,7 +24,7 @@ if (process.env.DEMO_MODE === 'true') {
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// ── Middleware ─────────────────────────────────────────────────────────────────
+// ── Middleware ─────────────────────────────────────────────────────────────
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '1mb' }));
 
@@ -39,6 +40,7 @@ app.use(limiter);
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/api/issues', issueRouter);
 app.use('/api/dashboard', dashboardRouter);
+app.use('/api', authRouter);
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), demo: process.env.DEMO_MODE === 'true' });
