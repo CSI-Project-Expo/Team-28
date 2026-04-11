@@ -12,6 +12,7 @@ export async function login(username: string, password: string) {
     }
     return user;
   } catch (error) {
+    console.error('Error logging in:', error);
     throw error;
   }
 }
