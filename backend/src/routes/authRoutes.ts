@@ -13,6 +13,7 @@ authRouter.post('/login', async (req, res) => {
     if (error.status === 401) {
       res.status(401).json({ error: 'Invalid username or password' });
     } else {
+      console.error('Error logging in:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   }

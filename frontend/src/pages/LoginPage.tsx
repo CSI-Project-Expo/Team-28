@@ -15,8 +15,8 @@ export default function LoginPage() {
     } catch (error: any) {
       if (error.status === 401) {
         setError('Invalid username or password');
-      } else if (error.response) {
-        setError(`Error ${error.response.status}: ${error.response.statusText}`);
+      } else if (error.status) {
+        setError(`Error ${error.status}: ${error.message}`);
       } else {
         setError('An error occurred while logging in');
       }

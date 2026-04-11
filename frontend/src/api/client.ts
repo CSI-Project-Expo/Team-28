@@ -109,8 +109,11 @@ export async function login(username: string, password: string): Promise<{ token
   } catch (error) {
     if (error.response && error.response.status === 401) {
       throw { status: 401, message: 'Invalid username or password' };
+    } else if (error.response) {
+      throw { status: error.response.status, message: error.response.data.error };
+    } else {
+      console.error('Error logging in:', error);
+      throw error;
     }
-    console.error('Error logging in:', error);
-    throw error;
   }
 }
