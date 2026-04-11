@@ -11,8 +11,11 @@ export async function login(username: string, password: string) {
       throw { status: 401, message: 'Invalid username or password' };
     }
     return user;
-  } catch (error) {
-    console.error('Error logging in:', error);
-    throw error;
+  } catch (error: any) {
+    if (error.status) {
+      throw error;
+    } else {
+      throw { status: 500, message: 'Internal server error' };
+    }
   }
 }
